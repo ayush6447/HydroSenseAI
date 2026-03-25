@@ -9,13 +9,14 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        theme: {
-          1: "#ccd5ae",
-          2: "#e9edc9",
-          3: "#fefae0",
-          4: "#faedcd",
-          5: "#d4a373"
-        }
+        background: "#F9FBF9",
+        sidebar: "#EBF2EB",
+        hero: "#1B6331",
+        card: "#F0F4EF",
+        primary: "#1B6331", // Hero green
+        accent: "#2E7D32",  // Accent green
+        text: "#0A2E12",    // Dark text
+        muted: "#556B55",   // Muted green-gray text
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",

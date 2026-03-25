@@ -1,9 +1,8 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from passlib.context import CryptContext
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import jwt
 import os
 import time
@@ -22,28 +21,28 @@ app = FastAPI(title="HydroSenseAI")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    print(f"REQUEST: {request.method} {request.url}")
+    response = await call_next(request)
+    print(f"RESPONSE: Status {response.status_code}")
+    return response
 
 # Authentication Config
 SECRET_KEY = os.getenv("JWT_SECRET", "super-secret-key-123")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
-        return username
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+def verify_token(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
+    # Bypassing for auth-free version as requested
+    return "admin"
 
 def create_access_token(data: dict):
     to_encode = data.copy()
@@ -90,7 +89,6 @@ latest_actuator_state: Dict[str, Any] = {
     "exhaust_fan": False
 }
 
-# Track when each actuator was last turned ON to enforce 5 min cooldown
 actuator_last_on_time: Dict[str, float] = {
     "ph_reducer": 0.0,
     "add_water": 0.0,
@@ -121,36 +119,21 @@ def get_cooldown_status() -> Dict[str, bool]:
 
 @app.post("/api/orchestrate")
 def orchestrate(username: str = Depends(verify_token)):
-    """
-    Run multi-model orchestration logic to determine AI insights
-    and update actuator states (with cooldowns).
-    """
     global latest_actuator_state, actuator_last_on_time
     current_time = time.time()
     
     # Mock AI Models Inference
-    # Model 1: Yield Predictor
-    yield_score = 0.85
-    
-    # Model 2: LSTM Forecast
+    yield_score = 85
     next_ph = latest_sensor_data["ph"] + 0.1
     next_tds = latest_sensor_data["tds"] - 50.0
-    
-    # Model 4: System Fault Detector
     fault = latest_sensor_data["water_level"] == 0
     
-    # Simple Rule-Based Orchestration for Actuators
-    target_state = {
-        "ph_reducer": False,
-        "add_water": False,
-        "nutrients_adder": False,
-        "humidifier": False,
-        "exhaust_fan": False
-    }
-    
+    # Orchestration Logic
     status = "GREEN"
     action = "System Optimal"
     escalation = False
+    
+    target_state = {key: False for key in latest_actuator_state}
     
     if fault:
         status = "RED"
@@ -170,47 +153,41 @@ def orchestrate(username: str = Depends(verify_token)):
         action = "Cooling ambient air"
         target_state["exhaust_fan"] = True
         
-    # Validation engine check (Cannot have ph_reducer and nutrients_adder ON)
-    if target_state["ph_reducer"] and target_state["nutrients_adder"]:
-        target_state["nutrients_adder"] = False
-        action += " (Nutrients delayed due to pH priority)"
-        
     # Enforce Cooldowns
     applied_state = {}
     cooldowns = get_cooldown_status()
-    
     for act, is_on in target_state.items():
-        if is_on:
-            if not cooldowns[act]:
-                applied_state[act] = True
-                actuator_last_on_time[act] = current_time
-            else:
-                applied_state[act] = False
-                action += f" ({act} on cooldown)"
+        if is_on and not cooldowns[act]:
+            applied_state[act] = True
+            actuator_last_on_time[act] = current_time
         else:
             applied_state[act] = False
             
     latest_actuator_state = applied_state
     
-    orchestrator_output = AIOrchestratorOutput(
-        status=status,
-        priority_action=action,
-        human_escalation=escalation
-    )
-    
     return {
-        "orchestrator_output": orchestrator_output.model_dump(),
+        "orchestrator_output": {
+            "status": status,
+            "priority_action": action,
+            "human_escalation": escalation,
+            "predicted_yield": yield_score
+        },
         "actuator_state": latest_actuator_state,
         "insights": {
-            "yield_score": yield_score,
             "next_ph": next_ph,
             "next_tds": next_tds
         }
     }
     
-@app.get("/api/actuators")
-def get_actuator_state():
-    return {
-        "state": latest_actuator_state,
-        "cooldowns": get_cooldown_status()
-    }
+@app.post("/api/actuators/reset")
+def reset_actuators(username: str = Depends(verify_token)):
+    global latest_actuator_state, actuator_last_on_time
+    latest_actuator_state = {key: False for key in latest_actuator_state}
+    actuator_last_on_time = {key: 0.0 for key in actuator_last_on_time}
+    return {"status": "reset", "state": latest_actuator_state}
+
+@app.post("/api/actuators/isolate")
+def isolate_system(username: str = Depends(verify_token)):
+    global latest_actuator_state
+    latest_actuator_state = {key: False for key in latest_actuator_state}
+    return {"status": "isolated", "state": latest_actuator_state}

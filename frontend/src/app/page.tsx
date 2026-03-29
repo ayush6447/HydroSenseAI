@@ -60,7 +60,7 @@ export default function Dashboard() {
 
   return (
     <main className="p-8 max-w-7xl mx-auto space-y-8">
-      <header className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-theme-4">
+      <header className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-theme-4">
         <div>
           <h1 className="text-3xl font-black text-theme-5 tracking-tight">HydroSenseAI</h1>
           <p className="text-gray-500 font-medium">Multi-Model AI Agriculture Orchestrator</p>

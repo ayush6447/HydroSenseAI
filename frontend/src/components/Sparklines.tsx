@@ -12,7 +12,7 @@ interface SparklinesProps {
 
 const Sparklines: React.FC<SparklinesProps> = ({ metrics }) => {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
       {metrics.map((metric, idx) => (
         <div key={idx} className="bg-theme-2 p-4 rounded-lg shadow-sm flex flex-col items-start border border-theme-1">
           <span className="text-sm font-semibold text-gray-600 uppercase tracking-wider">{metric.name}</span>

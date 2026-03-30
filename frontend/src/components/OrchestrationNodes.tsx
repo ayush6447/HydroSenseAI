@@ -24,7 +24,7 @@ export default function OrchestrationNodes({ actuatorState, output, onReset, onI
            <Cpu className="w-5 h-5" />
            <span>AI Insights</span>
         </div>
-        <h4 className="text-2xl font-black text-text tracking-tight uppercase">{output.status === 'GREEN' ? 'System Optimal' : output.priority_action}</h4>
+        <h4 className="text-2xl font-black text-text tracking-tight uppercase">{output?.status === 'GREEN' ? 'System Optimal' : output?.priority_action || 'Initializing...'}</h4>
         <p className="text-sm font-medium text-muted leading-relaxed">
            No immediate actions required. All environmental parameters are synchronized with the 
            <span className="text-accent underline cursor-pointer font-bold"> Genovese-04</span> growth profile.

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Request, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta
@@ -8,9 +8,13 @@ import os
 import time
 import asyncio
 import random
+import traceback as tb
 from fastapi import UploadFile, File
 from dotenv import load_dotenv
 from pymongo import MongoClient
+
+# Real AI Models Inference
+from app.ml.inference import predict_yield, predict_forecast, predict_fault, predict_disease
 
 load_dotenv()
 
@@ -39,10 +43,15 @@ from schemas import (
 app = FastAPI(title="HydroSenseAI")
 
 # CORS config
+origins = [
+    "http://localhost:3000",
+    "https://hydrosense-ai.vercel.app",  # ← your Vercel domain
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -178,8 +187,7 @@ def get_cooldown_status() -> Dict[str, bool]:
     }
 
 @app.post("/api/orchestrate")
-def orchestrate(username: str = Depends(verify_token)):
-    import traceback as tb
+async def orchestrate(background_tasks: BackgroundTasks, username: str = Depends(verify_token)):
     try:
         global latest_actuator_state, actuator_last_on_time
         current_time = time.time()
@@ -208,12 +216,11 @@ def orchestrate(username: str = Depends(verify_token)):
                 }
             }
             
-        # Real AI Models Inference
-        from app.ml.inference import predict_yield, predict_forecast, predict_fault
-        
-        yield_score = predict_yield(latest_sensor_data, latest_actuator_state)
-        next_ph, next_tds = predict_forecast(latest_sensor_data)
-        fault, fault_prob = predict_fault(latest_sensor_data, latest_actuator_state)
+        # Real AI Models Inference (Now asynchronous-friendly)
+        # We wrap intensive CPU work in to_thread to keep the event loop free
+        yield_score = await asyncio.to_thread(predict_yield, latest_sensor_data, latest_actuator_state)
+        next_ph, next_tds = await asyncio.to_thread(predict_forecast, latest_sensor_data)
+        fault, fault_prob = await asyncio.to_thread(predict_fault, latest_sensor_data, latest_actuator_state)
         
         # --- AI Intelligence Layer ---
         target_state = {key: False for key in latest_actuator_state}
@@ -294,23 +301,29 @@ def orchestrate(username: str = Depends(verify_token)):
             }
         }
         
-        # Persist to MongoDB Atlas
+        # Persist to MongoDB Atlas in background to avoid blocking response
         if mongo_db is not None:
-            try:
-                log_entry = {
-                    **result,
-                    "sensor_snapshot": latest_sensor_data,
-                    "logged_at": datetime.utcnow()
-                }
-                mongo_db.orchestration_logs.insert_one(log_entry)
-            except Exception as db_err:
-                print(f"MongoDB write error: {db_err}")
+            def log_to_mongo(data, sensors):
+                try:
+                    log_entry = {
+                        **data,
+                        "sensor_snapshot": sensors,
+                        "logged_at": datetime.utcnow()
+                    }
+                    mongo_db.orchestration_logs.insert_one(log_entry)
+                except Exception as db_err:
+                    print(f"MongoDB write error: {db_err}")
+            
+            background_tasks.add_task(log_to_mongo, result, latest_sensor_data)
         
         return result
     except Exception as e:
         error_trace = tb.format_exc()
         print(f"ORCHESTRATE CRASH: {error_trace}")
-        return {"error": str(e), "traceback": error_trace}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Orchestration engine failure: {str(e)}"
+        )
     
 @app.post("/api/actuators/reset")
 def reset_actuators(username: str = Depends(verify_token)):
@@ -326,6 +339,5 @@ def isolate_system(username: str = Depends(verify_token)):
 @app.post("/api/predict/plant-health")
 async def predict_plant_health(file: UploadFile = File(...), username: str = Depends(verify_token)):
     contents = await file.read()
-    from app.ml.inference import predict_disease
-    diagnosis, conf = predict_disease(contents)
+    diagnosis, conf = await asyncio.to_thread(predict_disease, contents)
     return {"diagnosis": diagnosis.upper(), "confidence": f"{conf*100:.1f}%"}

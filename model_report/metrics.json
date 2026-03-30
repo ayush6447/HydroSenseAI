@@ -1,0 +1,26 @@
+{
+  "XGBoost Yield": {
+    "MAE": 86.753,
+    "RMSE": 86.7536,
+    "R\u00b2": -155.253
+  },
+  "Fault Classifier": {
+    "Accuracy": 0.8923,
+    "Precision": 0.0756,
+    "Recall": 0.45,
+    "F1": 0.1295,
+    "AUC": 0.8407
+  },
+  "LSTM Forecast": {
+    "pH_MAE": 4.1158,
+    "pH_R\u00b2": 0.0,
+    "TDS_MAE": 493.4841,
+    "TDS_R\u00b2": 0.0
+  },
+  "YOLOv8 Disease": {
+    "metrics/accuracy_top1": 0.9976,
+    "metrics/accuracy_top5": 1.0,
+    "train/loss": 0.0089,
+    "val/loss": 0.0099
+  }
+}

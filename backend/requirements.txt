@@ -1,9 +1,6 @@
 fastapi
 uvicorn
 pydantic
-fastapi
-uvicorn
-pydantic
 PyJWT
 pytest
 httpx
@@ -17,3 +14,5 @@ numpy
 pymongo[srv]
 dnspython
 python-dotenv
+ultralytics
+Pillow
